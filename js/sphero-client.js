@@ -1,164 +1,70 @@
-/*
- * sphero-websocket Client
- * https://github.com/Babibubebon
- */
-var sphero = function() {
-    this.ws = null;
-    this.wsUri = null;
-    this._resQueue = {};
-};
+import eventPublisher from "./publisher";
 
-sphero.prototype.connect = function(uri, successCallback, errorCallback) {
-    if (this.ws)
-        return;
+function SpheroClient(wsHost) {
+  this.speedOfAccuracy = 5;
+  this.degreeOfAccuracy = 5;
+  this.sendInterval = 100;
+  this._isBreaking = false;
+  this.wsHost = wsHost;
 
-    this.wsUri = uri;
-    this.ws = new WebSocket(uri);
+  this._beforeDegree = 0;
+  this.degree = 0;
 
-    this.ws.onopen = function() {
-        if (typeof successCallback === "function")
-            successCallback(this.ws);
-    }.bind(this);
+  this._beforeSpeed = 0;
+  this.speed = 0;
 
-    this.ws.onclose = function() {
-        this.ws = null;
-        this._resQueue = {};
-    }.bind(this);
+  if (typeof sphero === "undefined") {
+    eventPublisher.publish("ws-not-found");
+  } else {
+    this.orb = new sphero();
+    this.orb.connect(this.wsHost, () => {
+      eventPublisher.publish("ws-connected");
+      this.orb.color("red");
+      eventPublisher.subscribe("rollingDegree", (degree) => {
+        this._beforeDegree = this.degree;
+        this.degree = degree;
+        this._roll();
+      });
+      eventPublisher.subscribe("rollingSpeed", (speed) => {
+        this._beforeSpeed = this.speed;
+        this.speed = speed;
+        this._roll();
+      });
 
-    this.ws.onerror = function(e) {
-        if (typeof errorCallback === "function")
-            errorCallback(e);
-    };
-
-    this.ws.onmessage = function(message) {
-        console.log(message.data);
-        var data;
-        try {
-            data = JSON.parse(message.data);
-        } catch(e) {
-            console.log(e);
-            return;
+      eventPublisher.subscribe("spheroState", (spheroState) => {
+        if (spheroState === "idling") {
+          this.orb.finishCalibration();
+        } else {
+          this.orb.startCalibration();
         }
-        if (data.ID && data.ID in this._resQueue) {
-            this._resQueue[data.ID](data.content);
-        }
-    }.bind(this);
+      });
+    }, () => {
+      eventPublisher.publish("ws-error");
+    });
+    this.orb.listenCustomMessage("hp", (data) => {
+      console.log(data);
+      eventPublisher.publish("hp", data.hp);
+    });
+    this.orb.listenCustomMessage("gameState", (data) => {
+      console.log(data);
+      eventPublisher.publish("gameState", data.gameState);
+    });
+  }
+}
+
+SpheroClient.prototype._roll = function() {
+  if (this._isBreaking) {
+    return;
+  }
+  if (Math.abs(this.speed - this._beforeSpeed) > this.speedOfAccuracy ||
+      Math.abs(this.degree - this._beforeDegree) > this.degreeOfAccuracy) {
+    this._isBreaking = true;
+    setTimeout(() => {
+      this.orb.roll(this.speed, this.degree);
+      this._isBreaking = false;
+    }, this.sendInterval);
+  }
 };
 
-sphero.prototype.disconnect = function() {
-    if (this.ws == null)
-        return;
-    this.ws.close();
-};
+export default SpheroClient;
 
-sphero.prototype.send = function(cmd, args, resCallback) {
-    if (this.ws == null)
-        return;
-    var mesID = (new Date()).getTime().toString() + Math.floor(Math.random() * 1000);
-    if (typeof resCallback === "function") {
-        this._resQueue[mesID] = resCallback;
-    }
-    
-    var data = {
-        command: cmd,
-        arguments: args,
-        ID: mesID
-    };
-    this.ws.send(JSON.stringify(data));
-};
-
-sphero.prototype.getList = function(callback) {
-    this.send("_list", [], callback);
-};
-
-sphero.prototype.use = function(name, callback) {
-    this.send("_use", [name], callback);
-};
-
-sphero.commands = [
-    /* sphero.js */
-    "setHeading",
-    "setStabilization",
-    "setRotationRate",
-    "setCreationDate",
-    "getBallRegWebsite",
-    "reEnableDemo",
-    "getChassisId",
-    "setChassisId",
-    "selfLevel",
-    "setVdl",
-    "setDataStreaming",
-    "setCollisionDetection",
-    "locator",
-    "setAccelerometer",
-    "readLocator",
-    "setRgbLed",
-    "setBackLed",
-    "getRgbLed",
-    "roll",
-    "boost",
-    "move",
-    "setRawMotors",
-    "setMotionTimeout",
-    "setOptionsFlag",
-    "getOptionsFlag",
-    "setTempOptionFlags",
-    "getTempOptionFlags",
-    "getConfigBlock",
-    "setSsbParams",
-    "setDeviceMode",
-    "setConfigBlock",
-    "getDeviceMode",
-    "getSsb",
-    "setSsb",
-    "ssbRefill",
-    "ssbBuy",
-    "ssbUseConsumeable",
-    "ssbGrantCores",
-    "ssbAddXp",
-    "ssbLevelUpAttr",
-    "getPwSeed",
-    "ssbEnableAsync",
-    "runMacro",
-    "saveTempMacro",
-    "saveMacro",
-    "initMacroExecutive",
-    "abortMacro",
-    "macroStatus",
-    "setMacroParam",
-    "appendTempMacroChunk",
-    "eraseOBStorage",
-    "appendOBFragment",
-    "execOBProgram",
-    "abortOBProgram",
-    "answerInput",
-    "commitToFlash",
-    "commitToFlashAlias",
-    /* custom.js */
-    "streanData",
-    "color",
-    "randomColor",
-    "getColor",
-    "detectCollisions",
-    "startCalibration",
-    "finishCalibration",
-    "streamOdometer",
-    "streamVelocity",
-    "streamAccelOne",
-    "streamImuAngles",
-    "streamAccelerometer",
-    "streamGyroscope",
-    "streamMotorsBackEmf",
-    "stopOnDisconnect",
-    "stop"
-];
-
-sphero.commands.forEach(function(command) {
-    sphero.prototype[command] = function() {
-        var argsArray = [];
-        for (var i = 0; i < arguments.length; i++) {
-            argsArray.push(arguments[i]);
-        }
-        this.send(command, argsArray);
-    };
-});

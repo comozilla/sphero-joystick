@@ -1,21 +1,28 @@
-import TargetManager from "./target-manager";
-import VirtualTarget from "./virtual-target";
-import SpheroTarget from "./sphero-target";
 import Joystick from "./joystick";
+import CalibrationButton from "./calibration-button";
+import HPBoard from "./hp-board";
+import InactiveStatus from "./inactive-status";
+import SpheroStates from "./sphero-states";
+import SpheroClient from "./sphero-client";
+import ModeManager from "./mode-manager";
 
 // webpack
 import "../css/style.css";
 
-var targetManager;
-var virtualTarget;
-var spheroTarget;
+var spheroStates;
+var spheroClient;
 var joystick;
+var calibrationButton;
+var hpBoard;
+var inactiveStatus;
+var modeManager;
 
 document.addEventListener("DOMContentLoaded",　function() {
-  targetManager = new TargetManager();
-  virtualTarget = new VirtualTarget();
-  spheroTarget = new SpheroTarget();
-  targetManager.add(virtualTarget);
-  targetManager.add(spheroTarget);
-  joystick = new Joystick(targetManager);
+  inactiveStatus = new InactiveStatus();
+  spheroStates = new SpheroStates();
+  spheroClient = new SpheroClient("ws://localhost:8080");
+  joystick = new Joystick();
+  hpBoard = new HPBoard(document.getElementById("hp"));
+  calibrationButton = new CalibrationButton(document.getElementById("calibration-button"));
+  modeManager = new ModeManager();
 });
